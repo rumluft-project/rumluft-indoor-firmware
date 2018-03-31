@@ -12,11 +12,15 @@ SensirionSGP30 sgp30;
 
 // setup() runs once, when the device is first turned on.
 void setup() {
+    Serial.println("rumluft firmware");
     if (!sht31d.begin(I2C_ADDR_SHT31D)) {
         Serial.println("SHT31 sensor not found");
     }
     if (!sgp30.begin()) {
         Serial.println("SGP30 sensor not found");
+    }
+    if (!sgp30.IAQinit()) {
+        Serial.println("SGP30 init failed");
     }
 }
 
@@ -30,16 +34,20 @@ void loop() {
     float humidity = NAN; // %RH
     readTemperatureHumidity(temperature, humidity);
 
+    // Pubish data to consumers (cloud and other mesh nodes)
     publishMeasurementData(temperature, humidity, voc, co2);
 
-    // Wait 60 seconds
-    delay(60000);
+    // Wait until next sample
+    delay(10000);
 }
 
 void readAirQuality(float& voc, float& co2) {
+    // TODO: take current humidity into account to improve measurement
     if (sgp30.IAQmeasure()) {
         voc = sgp30.TVOC;
         co2 = sgp30.eCO2;
+        Serial.print("TVOC = "); Serial.print(voc); Serial.println(" ppb");
+        Serial.print("CO2 = "); Serial.print(co2); Serial.println(" ppm");
     }
     else {
         Serial.println("SGP30 measurement failed");
@@ -51,6 +59,8 @@ void readTemperatureHumidity(float& temperature, float& humidity) {
     if (sht31dresult.error == SHT31D_CC::NO_ERROR) {
         temperature = sht31dresult.t;
         humidity = sht31dresult.rh;
+        Serial.print("Temp = "); Serial.print(temperature); Serial.println(" °C");
+        Serial.print("Humidity = "); Serial.print(humidity); Serial.println(" %RH");
     }
     else {
         Serial.println("SHT31D measurement failed");
