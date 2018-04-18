@@ -45,6 +45,13 @@ class SensirionSGP30 {
   boolean setIAQBaseline(uint16_t eco2_base, uint16_t tvoc_base);
 
   /**
+   * Set the absolute humidity value [mg/m^3] for compensation to increase precision of TVOC and eCO2.
+   * The absolute humidity must be provided in in mg/m^3 and the value must be between 0 and 256000 mg/m^3.
+   * If the absolute humidity is set to zero, humidity compensation will be disabled.
+   */
+  boolean setHumidity(uint32_t absolute_humidity);
+
+  /**
    * The last measurement of the IAQ-calculated Total Volatile Organic Compounds in ppb. This value is set when you call {@link IAQmeasure()}
    */
   uint16_t TVOC;

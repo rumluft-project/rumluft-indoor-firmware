@@ -26,32 +26,22 @@ void setup() {
 
 // loop() runs over and over again, as quickly as it can execute.
 void loop() {
-    float voc = NAN; // ppb
-    float co2 = NAN; // ppm
-    readAirQuality(voc, co2);
-
+    // SHT31D
     float temperature = NAN; // °C
     float humidity = NAN; // %RH
     readTemperatureHumidity(temperature, humidity);
+
+    // SGP30
+    setHumidityCompensation(temperature, humidity);
+    float voc = NAN; // ppb
+    float co2 = NAN; // ppm
+    readAirQuality(voc, co2);
 
     // Pubish data to consumers (cloud and other mesh nodes)
     publishMeasurementData(temperature, humidity, voc, co2);
 
     // Wait until next sample
     delay(10000);
-}
-
-void readAirQuality(float& voc, float& co2) {
-    // TODO: take current humidity into account to improve measurement
-    if (sgp30.IAQmeasure()) {
-        voc = sgp30.TVOC;
-        co2 = sgp30.eCO2;
-        Serial.print("TVOC = "); Serial.print(voc); Serial.println(" ppb");
-        Serial.print("CO2 = "); Serial.print(co2); Serial.println(" ppm");
-    }
-    else {
-        Serial.println("SGP30 measurement failed");
-    }
 }
 
 void readTemperatureHumidity(float& temperature, float& humidity) {
@@ -67,6 +57,25 @@ void readTemperatureHumidity(float& temperature, float& humidity) {
     }
 }
 
+void setHumidityCompensation(const float temperature, const float humidity) {
+    uint32_t absoluteHumidity = getAbsoluteHumidity(temperature, humidity);
+    if (!sgp30.setHumidity(absoluteHumidity)) {
+        Serial.println("SGP30 setting absolute humidity failed");
+    }
+}
+
+void readAirQuality(float& voc, float& co2) {
+    if (sgp30.IAQmeasure()) {
+        voc = sgp30.TVOC;
+        co2 = sgp30.eCO2;
+        Serial.print("TVOC = "); Serial.print(voc); Serial.println(" ppb");
+        Serial.print("CO2 = "); Serial.print(co2); Serial.println(" ppm");
+    }
+    else {
+        Serial.println("SGP30 measurement failed");
+    }
+}
+
 void publishMeasurementData(const float temperature, const float humidity, const float voc, const float co2) {
     // Send as text representation in JSON format so it can easily be processed
     char data[255];
@@ -75,4 +84,17 @@ void publishMeasurementData(const float temperature, const float humidity, const
 
     // Trigger the integration (limited to 255 bytes)
     Particle.publish("v1-indoor-data", data, PRIVATE);
+}
+
+/* return absolute humidity [mg/m^3] with approximation formula
+* @param temperature [°C]
+* @param humidity [%RH]
+*/
+uint32_t getAbsoluteHumidity(const float temperature, const float humidity) {
+    // Tetens equation for water vapour pressure gives a good approximation (< 0.1%) from 0-50°C
+    // https://en.wikipedia.org/wiki/Vapour_pressure_of_water#Approximation_formulas
+    const float waterVaporPressure = 0.61078 * exp((17.27f * temperature) / (temperature + 237.3f)); // [kPa]
+    const float absoluteHumidity = 2.16679 * (waterVaporPressure * 1000 /*[Pa]*/) / (temperature + 273.15 /* [K] */); // [g/m^3]
+    const uint32_t absoluteHumidityScaled = 1000 * absoluteHumidity; // [mg/m^3]
+    return absoluteHumidityScaled;
 }
