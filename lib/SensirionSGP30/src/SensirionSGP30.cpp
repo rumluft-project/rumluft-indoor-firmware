@@ -177,7 +177,7 @@ boolean SensirionSGP30::setHumidity(uint32_t absolute_humidity) {
   command[3] = ah_scaled & 0xFF;
   command[4] = generateCRC(command+2, 2);
 
-  return readWordFromCommand(command, 8, 10);
+  return readWordFromCommand(command, 5, 10);
 }
 
 /**************************************************************************/
