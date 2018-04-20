@@ -26,6 +26,17 @@ struct MeasurementData {
     float absoluteHumidity; // [mg/m^3]
 };
 
+/* return absolute humidity [mg/m^3] with approximation formula
+* @param temperature [°C]
+* @param humidity [%RH]
+*/
+uint32_t getAbsoluteHumidity(const MeasurementData& sample) {
+    // approximation formula from Sensirion SGP30 Driver Integration chapter 3.15
+    const float absoluteHumidity = 216.7f * ((sample.humidity / 100.0f) * 6.112f * exp((17.62f * sample.temperature) / (243.12f + sample.temperature)) / (273.15f + sample.temperature)); // [g/m^3]
+    const uint32_t absoluteHumidityScaled = static_cast<uint32_t>(1000.0f * absoluteHumidity); // [mg/m^3]
+    return absoluteHumidityScaled;
+}
+
 void readTemperatureHumidity(MeasurementData& sample) {
     SHT31D_CC::SHT31D sht31dresult = sht31d.readTempAndHumidity(SHT31D_CC::REPEATABILITY_LOW, SHT31D_CC::MODE_CLOCK_STRETCH, 50);
     if (sht31dresult.error == SHT31D_CC::NO_ERROR) {
@@ -40,7 +51,7 @@ void readTemperatureHumidity(MeasurementData& sample) {
 }
 
 void setHumidityCompensation(MeasurementData& sample) {
-    uint32_t absoluteHumidity = getAbsoluteHumidity(sample.temperature, sample.humidity);
+    uint32_t absoluteHumidity = getAbsoluteHumidity(sample);
     if (sgp30.setHumidity(absoluteHumidity)) {
         sample.absoluteHumidity = absoluteHumidity;
         Serial.print("Absolute Humidity = "); Serial.print(sample.absoluteHumidity); Serial.println(" mg/m^3");
@@ -70,17 +81,6 @@ void publishMeasurementData(const MeasurementData& sample) {
 
     // Trigger the integration (limited to 255 bytes)
     Particle.publish("v1-indoor-data", data, PRIVATE);
-}
-
-/* return absolute humidity [mg/m^3] with approximation formula
-* @param temperature [°C]
-* @param humidity [%RH]
-*/
-uint32_t getAbsoluteHumidity(const float temperature, const float humidity) {
-    // approximation formula from Sensirion SGP30 Driver Integration chapter 3.15
-    const float absoluteHumidity = 216.7f * ((humidity / 100.0f) * 6.112f * exp((17.62f * temperature) / (243.12f + temperature)) / (273.15f + temperature)); // [g/m^3]
-    const uint32_t absoluteHumidityScaled = static_cast<uint32_t>(1000.0f * absoluteHumidity); // [mg/m^3]
-    return absoluteHumidityScaled;
 }
 
 // setup() runs once, when the device is first turned on.
