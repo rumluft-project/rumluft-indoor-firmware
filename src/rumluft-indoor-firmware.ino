@@ -80,7 +80,7 @@ uint32_t getAbsoluteHumidity(const float temperature, const float humidity) {
     // Tetens equation for water vapour pressure gives a good approximation (< 0.1%) from 0-50°C
     // https://en.wikipedia.org/wiki/Vapour_pressure_of_water#Approximation_formulas
     const float waterVaporPressure = 0.61078 * exp((17.27f * temperature) / (temperature + 237.3f)); // [kPa]
-    const float absoluteHumidity = 2.16679 * (waterVaporPressure * 1000 /*[Pa]*/) / (temperature + 273.15 /* [K] */); // [g/m^3]
+    const float absoluteHumidity = 2.16679 * (waterVaporPressure * 1000 /*[Pa]*/) / (temperature + 273.15 /*[K]*/); // [g/m^3]
     const uint32_t absoluteHumidityScaled = 1000 * absoluteHumidity; // [mg/m^3]
     return absoluteHumidityScaled;
 }
