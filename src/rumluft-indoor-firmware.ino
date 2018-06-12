@@ -7,9 +7,6 @@
 
 const uint8_t I2C_ADDR_SHT31D = 0x44U;
 
-SHT31D_CC::ClosedCube_SHT31D sht31d;
-SensirionSGP30 sgp30;
-
 struct MeasurementData {
     MeasurementData() {
         temperature = NAN;
@@ -17,6 +14,8 @@ struct MeasurementData {
         voc = NAN;
         co2 = NAN;
         absoluteHumidity = NAN;
+        eco2_base = 0;
+        tvoc_base = 0;
     };
 
     float temperature; // [°C]
@@ -24,7 +23,22 @@ struct MeasurementData {
     float voc; // [ppb]
     float co2; // [ppm]
     float absoluteHumidity; // [mg/m^3]
+    uint16_t eco2_base; // SGP30 baseline correction algorithm value for CO2 [raw]
+    uint16_t tvoc_base; // SGP30 baseline correction algorithm value for VOC [raw]
 };
+
+struct EepromStorage {
+    uint8_t version; // helper to detect if EEPROM needs to be initialized (default 0xFF for empty EEPROM)
+    bool baselineValid; // flag set once manual burn in completed
+    long timeStamp;
+    uint16_t eco2_base;
+    uint16_t tvoc_base;
+};
+
+// global variables
+SHT31D_CC::ClosedCube_SHT31D sht31d;
+SensirionSGP30 sgp30;
+EepromStorage persistency;
 
 /* return absolute humidity [mg/m^3] with approximation formula
 * @param temperature [°C]
@@ -73,19 +87,88 @@ void readAirQuality(MeasurementData& sample) {
     }
 }
 
+void readBaseline(MeasurementData& sample) {
+    uint16_t eco2_base, tvoc_base;
+    if (sgp30.getIAQBaseline(&eco2_base, &tvoc_base)) {
+        sample.eco2_base = eco2_base;
+        sample.tvoc_base = tvoc_base;
+        Serial.print("tvoc_base = "); Serial.println(sample.tvoc_base);
+        Serial.print("eco2_base = "); Serial.println(sample.eco2_base);
+    }
+    else {
+        Serial.println("SGP30 baseline reading failed");
+    }
+}
+
+void restoreBaseline() {
+    EEPROM.get(0, persistency);
+    const bool baselineValid = persistency.baselineValid;
+    const long ONE_WEEK_MILLIS = 7 * 24 * 60 * 60 * 1000;
+    const bool youngerThan1Week = (Time.now() - persistency.timeStamp) <= ONE_WEEK_MILLIS;
+    if (baselineValid && youngerThan1Week) {
+        if(!sgp30.setIAQBaseline(persistency.eco2_base, persistency.tvoc_base)) {
+            Serial.println("SGP30 baseline setting failed");
+        }
+    }
+}
+
+void refreshBaseline(const MeasurementData& sample) {
+    // Once the baseline is properly initialized or restored, the current baseline value should be stored approximately once per hour
+    EEPROM.get(0, persistency);
+    const bool baselineValid = persistency.baselineValid;
+    const long ONE_HOUR_MILLIS = 60 * 60 * 1000;
+    const bool olderThan1Hour = (Time.now() - persistency.timeStamp) >= ONE_HOUR_MILLIS;
+    if (baselineValid && olderThan1Hour) {
+        persistBaseline(sample.eco2_base, sample.tvoc_base);
+    }
+}
+
+void persistBaseline(uint16_t eco2_base, uint16_t tvoc_base) {
+    persistency.version = 0;
+    persistency.baselineValid = true;
+    persistency.timeStamp = Time.now();
+    persistency.eco2_base = eco2_base;
+    persistency.tvoc_base = tvoc_base;
+    EEPROM.put(0, persistency);
+}
+
 void publishMeasurementData(const MeasurementData& sample) {
     // Send as text representation in JSON format so it can easily be processed
     char data[255];
     memset(data, sizeof(data), 0);
-    snprintf(data, sizeof(data), "{\"temp\":%.2f,\"humid\":%.2f,\"voc\":%.2f,\"co2\":%.2f,\"absHumid\":%.2f}", sample.temperature, sample.humidity, sample.voc, sample.co2, sample.absoluteHumidity);
+    snprintf(data, sizeof(data), "{\"temp\":%.2f,\"humid\":%.2f,\"voc\":%.2f,\"co2\":%.2f,\"absHumid\":%.2f,\"eco2_base\":%u,\"tvoc_base\":%u}", sample.temperature, sample.humidity, sample.voc, sample.co2, sample.absoluteHumidity, sample.eco2_base, sample.tvoc_base);
 
     // Trigger the integration (limited to 255 bytes)
     Particle.publish("v1-indoor-data", data, PRIVATE);
 }
 
+void setupEeprom() {
+    EEPROM.get(0, persistency);
+    if (persistency.version == 0xFF) {
+        // EEPROM was empty -> initialize
+        persistency.version = 0;
+        persistency.baselineValid = false;
+        persistency.timeStamp = 0;
+        persistency.eco2_base = 0;
+        persistency.tvoc_base = 0;
+    }
+}
+
+// Cloud functions must return int and take one String
+int cloudFunctionSetBaseline(String extra) {
+    uint16_t eco2_base, tvoc_base;
+    if (sgp30.getIAQBaseline(&eco2_base, &tvoc_base) && sgp30.setIAQBaseline(eco2_base, tvoc_base)) {
+        persistBaseline(eco2_base, tvoc_base);
+        return 0;
+    }
+    return -1;
+}
+
 // setup() runs once, when the device is first turned on.
 void setup() {
     Serial.println("rumluft firmware");
+    setupEeprom();
+
     if (!sht31d.begin(I2C_ADDR_SHT31D)) {
         Serial.println("SHT31 sensor not found");
     }
@@ -95,6 +178,10 @@ void setup() {
     if (!sgp30.IAQinit()) {
         Serial.println("SGP30 init failed");
     }
+    restoreBaseline();
+
+    // register the cloud function (Up to 15 cloud functions may be registered and each function name is limited to a maximum of 12 characters)
+    Particle.function("setBaseline", cloudFunctionSetBaseline);
 }
 
 // loop() runs over and over again, as quickly as it can execute.
@@ -106,6 +193,8 @@ void loop() {
     // SGP30
     setHumidityCompensation(sample);
     readAirQuality(sample);
+    readBaseline(sample);
+    refreshBaseline(sample);
 
     // Pubish data to consumers (cloud and other mesh nodes)
     publishMeasurementData(sample);
