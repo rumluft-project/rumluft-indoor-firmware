@@ -92,8 +92,8 @@ void readBaseline(MeasurementData& sample) {
     if (sgp30.getIAQBaseline(&eco2_base, &tvoc_base)) {
         sample.eco2_base = eco2_base;
         sample.tvoc_base = tvoc_base;
-        Serial.print("tvoc_base = "); Serial.println(sample.tvoc_base);
         Serial.print("eco2_base = "); Serial.println(sample.eco2_base);
+        Serial.print("tvoc_base = "); Serial.println(sample.tvoc_base);
     }
     else {
         Serial.println("SGP30 baseline reading failed");
@@ -106,7 +106,10 @@ void restoreBaseline() {
     const long ONE_WEEK_MILLIS = 7 * 24 * 60 * 60 * 1000;
     const bool youngerThan1Week = (Time.now() - persistency.timeStamp) <= ONE_WEEK_MILLIS;
     if (baselineValid && youngerThan1Week) {
-        if(!sgp30.setIAQBaseline(persistency.eco2_base, persistency.tvoc_base)) {
+        if(sgp30.setIAQBaseline(persistency.eco2_base, persistency.tvoc_base)) {
+            Serial.print("Restored baseline: eco2_base = "); Serial.print(persistency.eco2_base); Serial.print("/ tvoc_base = "); Serial.println(persistency.tvoc_base);
+        }
+        else {
             Serial.println("SGP30 baseline setting failed");
         }
     }
@@ -130,6 +133,8 @@ void persistBaseline(uint16_t eco2_base, uint16_t tvoc_base) {
     persistency.eco2_base = eco2_base;
     persistency.tvoc_base = tvoc_base;
     EEPROM.put(0, persistency);
+
+    Serial.print("Persisted baseline: eco2_base = "); Serial.print(eco2_base); Serial.print("/ tvoc_base = "); Serial.println(tvoc_base);
 }
 
 void publishMeasurementData(const MeasurementData& sample) {
