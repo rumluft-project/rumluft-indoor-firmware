@@ -234,6 +234,10 @@ void setup() {
     // register the cloud function (Up to 15 cloud functions may be registered and each function name is limited to a maximum of 12 characters)
     Particle.function("setBaseline", cloudFunctionSetBaseline);
     Particle.function("clrBaseline", cloudFunctionClearBaseline);
+
+    // Give the SGP30 time to start so that it provides valid gas quality signals
+    Serial.println("Waiting for the SGP30 to start");
+    delay(30000);
 }
 
 // loop() runs over and over again, as quickly as it can execute.
