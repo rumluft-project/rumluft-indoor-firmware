@@ -122,7 +122,8 @@ void restoreBaseline() {
     const bool youngerThan1Week = (Time.now() - persistency.timeStamp) <= ONE_WEEK_MILLIS;
     if (baselineValid && youngerThan1Week) {
         if(sgp30.setIAQBaseline(persistency.eco2_base, persistency.tvoc_base)) {
-            Serial.print("Restored baseline: eco2_base = "); Serial.print(persistency.eco2_base); Serial.print("/ tvoc_base = "); Serial.println(persistency.tvoc_base);
+            Serial.print("Restored baseline from UTC "); Serial.print(Time.format(persistency.timeStamp, TIME_FORMAT_DEFAULT));
+            Serial.print(": eco2_base = "); Serial.print(persistency.eco2_base); Serial.print(" / tvoc_base = "); Serial.println(persistency.tvoc_base);
         }
         else {
             Serial.println("SGP30 baseline setting failed");
@@ -167,7 +168,7 @@ void persistBaseline(uint16_t eco2_base, uint16_t tvoc_base) {
     persistency.tvoc_base = tvoc_base;
     EEPROM.put(0, persistency);
 
-    Serial.print("Persisted baseline: eco2_base = "); Serial.print(eco2_base); Serial.print("/ tvoc_base = "); Serial.println(tvoc_base);
+    Serial.print("Persisted baseline: eco2_base = "); Serial.print(eco2_base); Serial.print(" / tvoc_base = "); Serial.println(tvoc_base);
 }
 
 void publishMeasurementData(const MeasurementData& sample) {
@@ -219,7 +220,7 @@ void setup() {
     Serial.println("rumluft firmware");
     setupEeprom();
 
-    if (!sht31d.begin(I2C_ADDR_SHT31D)) {
+    if (sht31d.begin(I2C_ADDR_SHT31D) != SHT31D_CC::NO_ERROR) {
         Serial.println("SHT31 sensor not found");
     }
     if (!sgp30.begin()) {
