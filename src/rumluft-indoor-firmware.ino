@@ -30,7 +30,7 @@ struct MeasurementData {
 struct EepromStorage {
     uint8_t version; // helper value to detect if EEPROM needs to be initialized (default 0xFF for empty EEPROM)
     bool baselineValid; // flag set once SGP30 baseline calibration sequence is completed (12 hours)
-    long timeStamp; // timestamp when baseline calibration sequence has been started or last valid baseline has been stored [Unix time format]
+    long timeStamp; // timestamp when baseline calibration sequence has been started or last valid baseline has been stored [Unix time format in seconds since January 1, 1970]
     uint16_t eco2_base; // SGP30 baseline value for CO2
     uint16_t tvoc_base; // SGP30 baseline value for TVOC
 };
@@ -117,8 +117,8 @@ void readBaseline(MeasurementData& sample) {
 */
 void restoreBaseline() {
     const bool baselineValid = persistency.baselineValid;
-    const long ONE_WEEK_MILLIS = 7 * 24 * 60 * 60 * 1000;
-    const bool youngerThan1Week = (Time.now() - persistency.timeStamp) <= ONE_WEEK_MILLIS;
+    const time_t SECS_PER_DAY = 24 * 60 * 60;
+    const bool youngerThan1Week = (Time.now() - persistency.timeStamp) <= (7 * SECS_PER_DAY);
     if (baselineValid && youngerThan1Week) {
         if(sgp30.setIAQBaseline(persistency.eco2_base, persistency.tvoc_base)) {
             Serial.print("Restored baseline from UTC "); Serial.print(Time.format(persistency.timeStamp, TIME_FORMAT_DEFAULT));
@@ -138,8 +138,8 @@ void restoreBaseline() {
 
 void refreshBaseline(const MeasurementData& sample) {
     const bool baselineValid = persistency.baselineValid;
-    const long ONE_HOUR_MILLIS = 60 * 60 * 1000;
-    const bool olderThan1Hour = (Time.now() - persistency.timeStamp) >= ONE_HOUR_MILLIS;
+    const time_t SECS_PER_HOUR = 60 * 60;
+    const bool olderThan1Hour = (Time.now() - persistency.timeStamp) >= SECS_PER_HOUR;
     if (baselineValid && olderThan1Hour) {
         // Once the baseline is properly initialized or restored, the current baseline value should be stored approximately once per hour
         persistBaseline(sample.eco2_base, sample.tvoc_base);
@@ -147,7 +147,7 @@ void refreshBaseline(const MeasurementData& sample) {
     else if (baselineCalibrationInProgress) {
         // Restarting the sensor without restoring a baseline will result in the sensor trying to determine a new baseline.
         // The baseline calibration algorithm will be performed on the SGP30 for 12hrs (maximum time required to find a new baseline).
-        const bool baselineCalibrationCompleted = (Time.now() - persistency.timeStamp) >= (12 * ONE_HOUR_MILLIS);
+        const bool baselineCalibrationCompleted = (Time.now() - persistency.timeStamp) >= (12 * SECS_PER_HOUR);
         if (baselineCalibrationInProgress && baselineCalibrationCompleted) {
             // The sensor adjusts to the best value it has been exposed to. So keeping it indoors the sensor thinks this is the best value and sets it to 0ppb tVOC and 400ppm CO2eq.
             // As soon as you expose the sensor to outside air it can adjust to the global H2 Background Signal. For normal Operation exposing the sensor to outside air for 10min cumulative time should be sufficient.
@@ -215,7 +215,10 @@ int cloudFunctionClearBaseline(String extra) {
 
 // setup() runs once, when the device is first turned on.
 void setup() {
+    Serial.println("================================");
     Serial.println("rumluft firmware");
+    Serial.print(F("Compiletime: ")); Serial.print(__TIME__); Serial.print(" "); Serial.println(__DATE__);
+    Serial.println("================================");
     setupEeprom();
 
     if (sht31d.begin(I2C_ADDR_SHT31D) != SHT31D_CC::NO_ERROR) {
