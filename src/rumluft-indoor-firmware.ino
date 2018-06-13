@@ -116,7 +116,6 @@ void readBaseline(MeasurementData& sample) {
 /* Restore the baseline if it's valid and less than 1 week old. In case of an old baseline, the timestamp for the baseline calibration sequence is stored.
 */
 void restoreBaseline() {
-    EEPROM.get(0, persistency);
     const bool baselineValid = persistency.baselineValid;
     const long ONE_WEEK_MILLIS = 7 * 24 * 60 * 60 * 1000;
     const bool youngerThan1Week = (Time.now() - persistency.timeStamp) <= ONE_WEEK_MILLIS;
@@ -138,7 +137,6 @@ void restoreBaseline() {
 }
 
 void refreshBaseline(const MeasurementData& sample) {
-    EEPROM.get(0, persistency);
     const bool baselineValid = persistency.baselineValid;
     const long ONE_HOUR_MILLIS = 60 * 60 * 1000;
     const bool olderThan1Hour = (Time.now() - persistency.timeStamp) >= ONE_HOUR_MILLIS;
